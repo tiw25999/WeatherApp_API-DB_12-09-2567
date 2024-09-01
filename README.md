@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 "# Mobile-App-Weather"
 
 =======
@@ -20,3 +21,6 @@ For help getting started with Flutter development, view the
 samples, guidance on mobile development, and a full API reference.
 
 >>>>>>> 9bd4b39 (Initial commit for project)
+=======
+# MobileAPP-API
+>>>>>>> 703359473edd01454748e402c36b3fb325c7f3ba
