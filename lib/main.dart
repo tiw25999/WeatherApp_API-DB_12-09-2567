@@ -1,26 +1,35 @@
-import 'dart:convert';
-
+import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore
+import 'package:firebase_core/firebase_core.dart'; // Import Firebase
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
-import 'Forgot.dart';
-import 'Login.dart'; // Import LoginPage
-import 'Register.dart'; // Import RegisterPage
-import 'SettingsScreen.dart';
-import 'SevenDayForecastScreen.dart';
+import 'features/auth/Forgot.dart';
+import 'features/auth/Login.dart';
+import 'features/auth/Newpass.dart';
+import 'features/auth/Register.dart';
+import 'features/forecast/SevenDayForecastScreen.dart';
+import 'features/settings/SettingsScreen.dart';
+import 'firebase_options.dart'; // Import Firebase Options
+import 'models/forecast_model.dart'; // Import ForecastModel
+import 'services/location_service.dart'; // Import Location Service
+import 'services/weather_service.dart'; // Import Weather Service
+import 'widgets/humidity_display.dart'; // Import HumidityDisplay
+import 'widgets/province_picker.dart'; // Import ProvincePicker
+import 'widgets/temperature_display.dart'; // Import TemperatureDisplay
+import 'widgets/wind_speed_display.dart'; // Import WindSpeedDisplay
 
 void main() async {
-  // Initialize localization for dates
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   await initializeDateFormatting('th_TH', null);
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -28,16 +37,18 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: WeatherScreen(),
+      home: WeatherScreen(), // เริ่มที่ WeatherScreen
       routes: {
         '/settings': (context) => SettingsScreen(),
-        '/seven_day_forecast': (context) =>
-            SevenDayForecastScreen(province: ''),
-        '/login': (context) => Login(), // เพิ่มเส้นทางสำหรับหน้า LoginPage
-        '/forgot': (context) =>
-            ForgotPasswordScreen(), // เส้นทางสำหรับ Forgot Password
-        '/register': (context) =>
-            Register(), // เพิ่มเส้นทางสำหรับหน้า RegisterPage
+        '/login': (context) => Login(
+              onLoginSuccess: () {
+                print('Login success');
+                Navigator.pop(context);
+              },
+            ),
+        '/register': (context) => Register(),
+        '/forgot': (context) => const ForgotPasswordScreen(),
+        '/newpass': (context) => const NewPasswordScreen(),
       },
     );
   }
@@ -53,9 +64,11 @@ class WeatherScreen extends StatefulWidget {
 class _WeatherScreenState extends State<WeatherScreen> {
   String? selectedProvince;
   Map<String, dynamic>? weatherData;
-  List<Map<String, String>> hourlyData = [];
   String? dailyWeather;
+  List<Map<String, String>> hourlyData = [];
 
+  final FirebaseFirestore firestore =
+      FirebaseFirestore.instance; // Firestore instance
   final List<String> provinces = [
     'กรุงเทพมหานคร',
     'กระบี่',
@@ -144,263 +157,90 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
   Future<void> _getCurrentLocation() async {
     try {
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-
-      String? province = await getProvinceFromCoordinates(
+      Position position = await LocationService.getCurrentLocation();
+      String? province = await LocationService.getProvinceFromCoordinates(
           position.latitude, position.longitude);
 
       setState(() {
-        selectedProvince = province ?? 'ไม่พบจังหวัด';
+        selectedProvince = province ?? provinces.first;
       });
 
-      fetchWeatherDataByProvince(selectedProvince!);
-      fetchHourlyWeatherData(selectedProvince!);
-      fetchDailyWeatherData(selectedProvince!);
+      await _fetchWeatherData();
     } catch (e) {
       print('Error getting location: $e');
-    }
-  }
-
-  Future<String?> getProvinceFromCoordinates(double lat, double lon) async {
-    const apiKey = 'pk.0118ee540ae83cd72685cbb10ef7cfd2';
-    final url =
-        'https://us1.locationiq.com/v1/reverse.php?key=$apiKey&lat=$lat&lon=$lon&format=json';
-
-    try {
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        String? province = data['address']['province'];
-
-        Map<String, String> provinceMapping = {
-          'Bangkok Province': 'กรุงเทพมหานคร',
-          'Krabi Province': 'กระบี่',
-          'Kanchanaburi Province': 'กาญจนบุรี',
-          'Kalasin Province': 'กาฬสินธุ์',
-          'Kamphaeng Phet Province': 'กำแพงเพชร',
-          'Khon Kaen Province': 'ขอนแก่น',
-          'Chanthaburi Province': 'จันทบุรี',
-          'Chachoengsao Province': 'ฉะเชิงเทรา',
-          'Chonburi Province': 'ชลบุรี',
-          'Chai Nat Province': 'ชัยนาท',
-          'Chaiyaphum Province': 'ชัยภูมิ',
-          'Chumphon Province': 'ชุมพร',
-          'Chiang Mai Province': 'เชียงใหม่',
-          'Chiang Rai Province': 'เชียงราย',
-          'Trang Province': 'ตรัง',
-          'Trat Province': 'ตราด',
-          'Tak Province': 'ตาก',
-          'Nakhon Nayok Province': 'นครนายก',
-          'Nakhon Pathom Province': 'นครปฐม',
-          'Nakhon Phanom Province': 'นครพนม',
-          'Nakhon Ratchasima Province': 'นครราชสีมา',
-          'Nakhon Si Thammarat Province': 'นครศรีธรรมราช',
-          'Nakhon Sawan Province': 'นครสวรรค์',
-          'Nonthaburi Province': 'นนทบุรี',
-          'Narathiwat Province': 'นราธิวาส',
-          'Nan Province': 'น่าน',
-          'Bueng Kan Province': 'บึงกาฬ',
-          'Buriram Province': 'บุรีรัมย์',
-          'Pathum Thani Province': 'ปทุมธานี',
-          'Prachuap Khiri Khan Province': 'ประจวบคีรีขันธ์',
-          'Prachinburi Province': 'ปราจีนบุรี',
-          'Pattani Province': 'ปัตตานี',
-          'Ayutthaya Province': 'พระนครศรีอยุธยา',
-          'Phang Nga Province': 'พังงา',
-          'Phatthalung Province': 'พัทลุง',
-          'Phichit Province': 'พิจิตร',
-          'Phitsanulok Province': 'พิษณุโลก',
-          'Phetchaburi Province': 'เพชรบุรี',
-          'Phetchabun Province': 'เพชรบูรณ์',
-          'Phrae Province': 'แพร่',
-          'Phayao Province': 'พะเยา',
-          'Phuket Province': 'ภูเก็ต',
-          'Maha Sarakham Province': 'มหาสารคาม',
-          'Mukdahan Province': 'มุกดาหาร',
-          'Mae Hong Son Province': 'แม่ฮ่องสอน',
-          'Yala Province': 'ยะลา',
-          'Yasothon Province': 'ยโสธร',
-          'Roi Et Province': 'ร้อยเอ็ด',
-          'Ranong Province': 'ระนอง',
-          'Rayong Province': 'ระยอง',
-          'Ratchaburi Province': 'ราชบุรี',
-          'Lopburi Province': 'ลพบุรี',
-          'Lampang Province': 'ลำปาง',
-          'Lamphun Province': 'ลำพูน',
-          'Loei Province': 'เลย',
-          'Si Sa Ket Province': 'ศรีสะเกษ',
-          'Sakon Nakhon Province': 'สกลนคร',
-          'Songkhla Province': 'สงขลา',
-          'Satun Province': 'สตูล',
-          'Samut Prakan Province': 'สมุทรปราการ',
-          'Samut Songkhram Province': 'สมุทรสงคราม',
-          'Samut Sakhon Province': 'สมุทรสาคร',
-          'Sa Kaeo Province': 'สระแก้ว',
-          'Saraburi Province': 'สระบุรี',
-          'Sing Buri Province': 'สิงห์บุรี',
-          'Sukhothai Province': 'สุโขทัย',
-          'Suphan Buri Province': 'สุพรรณบุรี',
-          'Surat Thani Province': 'สุราษฎร์ธานี',
-          'Surin Province': 'สุรินทร์',
-          'Nong Khai Province': 'หนองคาย',
-          'Nong Bua Lamphu Province': 'หนองบัวลำภู',
-          'Ang Thong Province': 'อ่างทอง',
-          'Udon Thani Province': 'อุดรธานี',
-          'Uthai Thani Province': 'อุทัยธานี',
-          'Uttaradit Province': 'อุตรดิตถ์',
-          'Ubon Ratchathani Province': 'อุบลราชธานี',
-          'Amnat Charoen Province': 'อำนาจเจริญ'
-        };
-
-        if (province != null && provinceMapping.containsKey(province)) {
-          province = provinceMapping[province];
-        } else {
-          province = 'ไม่พบจังหวัด';
-        }
-
-        return province;
-      } else {
-        return null;
-      }
-    } catch (error) {
-      return null;
-    }
-  }
-
-  Future<void> fetchWeatherDataByProvince(String province) async {
-    String date = DateFormat("yyyy-MM-dd").format(DateTime.now());
-    String hour = DateFormat("H").format(DateTime.now());
-
-    int parsedHour = int.tryParse(hour) ?? 0;
-
-    String url =
-        'https://data.tmd.go.th/nwpapi/v1/forecast/location/hourly/place?province=$province&date=$date&hour=$parsedHour&duration=1&fields=tc,rh,ws10m,wd10m';
-
-    const apiKey =
-        'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImY3NDAzZjU3NTZjNTljZmI3NmViMmE3MmE4ZjE4NmE4MDU1NGEwZGM4NjJlNTI1NDgwZTk3NmRlNGE3ODBkNGFmNWRiMmNjNjk2NTk2ZGJlIn0.eyJhdWQiOiIyIiwianRpIjoiZjc0MDNmNTc1NmM1OWNmYjc2ZWIyYTcyYThmMTg2YTgwNTU0YTBkYzg2MmU1MjU0ODBlOTc2ZGU0YTc4MGQ0YWY1ZGIyY2M2OTY1OTZkYmUiLCJpYXQiOjE3MjUyMTIzMDcsIm5iZiI6MTcyNTIxMjMwNywiZXhwIjoxNzU2NzQ4MzA3LCJzdWIiOiIzNDE0Iiwic2NvcGVzIjpbXX0.SR_TtdFSx6iKbhkcmhRwnfVK3xD5Zex6cMR07wKglB4jdjdgS4_d9Imm0eiqsYFz_OttF095wYvCDbOjgpj7G-oBde4SzGhOF1DZW1CYd1lArS1HZzYNz17-JMBzj7P3CKypyzkoOyWAW9FLzldscsaZ3vzCxbyaroS6GRBRNgI1UK1CexekTwKRvFhHgQHjOxWF9aZMmN2cyR8PyNZfRunXSoZt_CgPBAR7hpSTvt7F23fYtTqI4M7UKjl7a11Qpw3szDcTgPjb8Ss-ZD3eX4eLQjGW8DzYj6B72BRoo81hPbkTKxL7DCywE9Y77NoE4DZKf59uXMwecA8AhuBvGtSYRDFJ8y_iUcqNPdDSFO39lVrj-9XKt4BdfQioV30XEGPph0gtg-TvhrUiLJhHyLt35oVt9byD3nSKjlptcVzk492VJnD-lRFWM3r_s1RhsrY9Kw6f27LRZTqq_cj6dy9eMDp4Jzci2an7EhtQeWUqqfAbdy3AuXr9MOePfnlkJrrq6Y3LgHIFMIwHIYn3L4JuVgNojPxXZXuecLOcfGkowiQjBf6QEWVsA6txtwmm6mO2XZbRVWUCL-VxRt2ZDwk8R8wZMR5e-TedWputjwIYM4Ltr9Pb88R_slJmQYqMZKRnzEh6MNNXf-9nDdRRw7VEGmIm4sgHPcXiJcEmz1c';
-
-    try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'accept': 'application/json',
-          'authorization': 'Bearer $apiKey',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          weatherData = (data['WeatherForecasts'] as List)
-              .map((item) => {
-                    "temperature": item['forecasts'][0]['data']['tc'],
-                    "humidity": item['forecasts'][0]['data']['rh'],
-                    "windSpeed": item['forecasts'][0]['data']['ws10m'],
-                    "windDirection": item['forecasts'][0]['data']['wd10m'],
-                  })
-              .toList()
-              .first;
-        });
-      } else {
-        setState(() {
-          weatherData = {
-            "error": "Error fetching data: ${response.statusCode}"
-          };
-        });
-      }
-    } catch (error) {
       setState(() {
-        weatherData = {"error": "Error fetching data: $error"};
+        selectedProvince = provinces.first;
       });
     }
   }
 
-  Future<void> fetchHourlyWeatherData(String province) async {
-    DateTime now = DateTime.now();
-    String date = DateFormat("yyyy-MM-dd").format(now);
-    int currentHour = now.hour + 1; // เพิ่ม 1 ชั่วโมงจากชั่วโมงปัจจุบัน
+  Future<void> _fetchWeatherData() async {
+    if (selectedProvince != null) {
+      var dailyResponse =
+          await WeatherService.fetchDailyWeather(selectedProvince!);
+      print('Daily Response: $dailyResponse');
+      var hourlyResponse =
+          await WeatherService.fetchHourlyWeather(selectedProvince!);
+      print('Hourly Response: $hourlyResponse');
 
-    String url =
-        'https://data.tmd.go.th/nwpapi/v1/forecast/location/hourly/place?province=$province&date=$date&hour=$currentHour&duration=6&fields=tc';
+      if (dailyResponse != null && dailyResponse['WeatherForecasts'] != null) {
+        List forecasts = dailyResponse['WeatherForecasts'][0]['forecasts'];
 
-    const apiKey =
-        'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImY3NDAzZjU3NTZjNTljZmI3NmViMmE3MmE4ZjE4NmE4MDU1NGEwZGM4NjJlNTI1NDgwZTk3NmRlNGE3ODBkNGFmNWRiMmNjNjk2NTk2ZGJlIn0.eyJhdWQiOiIyIiwianRpIjoiZjc0MDNmNTc1NmM1OWNmYjc2ZWIyYTcyYThmMTg2YTgwNTU0YTBkYzg2MmU1MjU0ODBlOTc2ZGU0YTc4MGQ0YWY1ZGIyY2M2OTY1OTZkYmUiLCJpYXQiOjE3MjUyMTIzMDcsIm5iZiI6MTcyNTIxMjMwNywiZXhwIjoxNzU2NzQ4MzA3LCJzdWIiOiIzNDE0Iiwic2NvcGVzIjpbXX0.SR_TtdFSx6iKbhkcmhRwnfVK3xD5Zex6cMR07wKglB4jdjdgS4_d9Imm0eiqsYFz_OttF095wYvCDbOjgpj7G-oBde4SzGhOF1DZW1CYd1lArS1HZzYNz17-JMBzj7P3CKypyzkoOyWAW9FLzldscsaZ3vzCxbyaroS6GRBRNgI1UK1CexekTwKRvFhHgQHjOxWF9aZMmN2cyR8PyNZfRunXSoZt_CgPBAR7hpSTvt7F23fYtTqI4M7UKjl7a11Qpw3szDcTgPjb8Ss-ZD3eX4eLQjGW8DzYj6B72BRoo81hPbkTKxL7DCywE9Y77NoE4DZKf59uXMwecA8AhuBvGtSYRDFJ8y_iUcqNPdDSFO39lVrj-9XKt4BdfQioV30XEGPph0gtg-TvhrUiLJhHyLt35oVt9byD3nSKjlptcVzk492VJnD-lRFWM3r_s1RhsrY9Kw6f27LRZTqq_cj6dy9eMDp4Jzci2an7EhtQeWUqqfAbdy3AuXr9MOePfnlkJrrq6Y3LgHIFMIwHIYn3L4JuVgNojPxXZXuecLOcfGkowiQjBf6QEWVsA6txtwmm6mO2XZbRVWUCL-VxRt2ZDwk8R8wZMR5e-TedWputjwIYM4Ltr9Pb88R_slJmQYqMZKRnzEh6MNNXf-9nDdRRw7VEGmIm4sgHPcXiJcEmz1c';
+        DateTime today = DateTime.now();
+        var todayForecast = forecasts.firstWhere(
+            (forecast) => DateTime.parse(forecast['time']).day == today.day,
+            orElse: () => null);
 
-    try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'accept': 'application/json',
-          'authorization': 'Bearer $apiKey',
-        },
-      );
+        if (todayForecast != null) {
+          setState(() {
+            DateTime date = DateTime.parse(todayForecast['time']);
+            String dayOfWeek = DateFormat('EEEE', 'th_TH').format(date);
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        List<Map<String, String>> hourlyData = [];
+            // ตรวจสอบว่า tc_max มีค่าหรือไม่
+            var maxTempData = todayForecast['data']['tc_max'];
+            int maxTemp = maxTempData != null ? maxTempData.round() : 0;
 
-        var forecasts = data['WeatherForecasts']?[0]?['forecasts'];
-        if (forecasts != null && forecasts.isNotEmpty) {
-          for (var i = 0; i < forecasts.length; i++) {
-            int hour = (currentHour + i) % 24;
-            int temperature = forecasts[i]['data']['tc'].toInt();
-            hourlyData.add({
-              'hour': '$hour:00',
-              'temperature': '$temperature°',
-            });
-          }
-        }
-
-        setState(() {
-          this.hourlyData = hourlyData;
-        });
-      } else {
-        print('Error: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Error fetching hourly weather data: $e');
-    }
-  }
-
-  Future<void> fetchDailyWeatherData(String province) async {
-    DateTime now = DateTime.now();
-    String date = DateFormat("yyyy-MM-dd").format(now);
-    String url =
-        'https://data.tmd.go.th/nwpapi/v1/forecast/location/daily/place?province=$province&date=$date&duration=1&fields=tc_max';
-
-    const apiKey =
-        'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImY3NDAzZjU3NTZjNTljZmI3NmViMmE3MmE4ZjE4NmE4MDU1NGEwZGM4NjJlNTI1NDgwZTk3NmRlNGE3ODBkNGFmNWRiMmNjNjk2NTk2ZGJlIn0.eyJhdWQiOiIyIiwianRpIjoiZjc0MDNmNTc1NmM1OWNmYjc2ZWIyYTcyYThmMTg2YTgwNTU0YTBkYzg2MmU1MjU0ODBlOTc2ZGU0YTc4MGQ0YWY1ZGIyY2M2OTY1OTZkYmUiLCJpYXQiOjE3MjUyMTIzMDcsIm5iZiI6MTcyNTIxMjMwNywiZXhwIjoxNzU2NzQ4MzA3LCJzdWIiOiIzNDE0Iiwic2NvcGVzIjpbXX0.SR_TtdFSx6iKbhkcmhRwnfVK3xD5Zex6cMR07wKglB4jdjdgS4_d9Imm0eiqsYFz_OttF095wYvCDbOjgpj7G-oBde4SzGhOF1DZW1CYd1lArS1HZzYNz17-JMBzj7P3CKypyzkoOyWAW9FLzldscsaZ3vzCxbyaroS6GRBRNgI1UK1CexekTwKRvFhHgQHjOxWF9aZMmN2cyR8PyNZfRunXSoZt_CgPBAR7hpSTvt7F23fYtTqI4M7UKjl7a11Qpw3szDcTgPjb8Ss-ZD3eX4eLQjGW8DzYj6B72BRoo81hPbkTKxL7DCywE9Y77NoE4DZKf59uXMwecA8AhuBvGtSYRDFJ8y_iUcqNPdDSFO39lVrj-9XKt4BdfQioV30XEGPph0gtg-TvhrUiLJhHyLt35oVt9byD3nSKjlptcVzk492VJnD-lRFWM3r_s1RhsrY9Kw6f27LRZTqq_cj6dy9eMDp4Jzci2an7EhtQeWUqqfAbdy3AuXr9MOePfnlkJrrq6Y3LgHIFMIwHIYn3L4JuVgNojPxXZXuecLOcfGkowiQjBf6QEWVsA6txtwmm6mO2XZbRVWUCL-VxRt2ZDwk8R8wZMR5e-TedWputjwIYM4Ltr9Pb88R_slJmQYqMZKRnzEh6MNNXf-9nDdRRw7VEGmIm4sgHPcXiJcEmz1c';
-
-    try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'accept': 'application/json',
-          'authorization': 'Bearer $apiKey',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        var forecasts = data['WeatherForecasts']?[0]?['forecasts'];
-        if (forecasts != null && forecasts.isNotEmpty) {
-          int temperature = forecasts[0]['data']['tc_max'].toInt();
-          String dayOfWeek = DateFormat('EEEE', 'th_TH').format(now);
-          dailyWeather = '$dayOfWeek: $temperature°';
+            dailyWeather = '$dayOfWeek ${maxTemp > 0 ? maxTemp : '-'}°C';
+          });
         } else {
-          dailyWeather = 'No daily data available';
+          print('No weather data found for today');
         }
-      } else {
-        print('Error: ${response.statusCode}');
       }
-    } catch (e) {
-      print('Error fetching daily weather data: $e');
-    }
 
-    setState(() {});
+      if (hourlyResponse != null &&
+          hourlyResponse['WeatherForecasts'] != null) {
+        hourlyData =
+            (hourlyResponse['WeatherForecasts'][0]['forecasts'] as List)
+                .map((forecast) {
+          var hourlyForecast = ForecastModel.fromJson(forecast);
+          DateTime dateTime = DateTime.parse(hourlyForecast.time).toLocal();
+          String formattedTime = DateFormat("HH:mm").format(dateTime);
+
+          double temperature = hourlyForecast.weather.temperature ?? 0.0;
+          double humidity = hourlyForecast.weather.humidity ?? 0.0;
+          double windSpeed = hourlyForecast.weather.windSpeed ?? 0.0;
+
+          return {
+            "time": formattedTime,
+            "temperature": "${temperature.toStringAsFixed(0)}",
+            "humidity": humidity.toStringAsFixed(2),
+            "windSpeed": windSpeed.toStringAsFixed(2)
+          };
+        }).toList();
+
+        if (hourlyData.isNotEmpty) {
+          setState(() {
+            weatherData = {
+              "temperature": hourlyData[0]['temperature'],
+              "humidity": hourlyData[0]['humidity'],
+              "windSpeed": hourlyData[0]['windSpeed'],
+            };
+          });
+        } else {
+          print('No hourly data available');
+        }
+      }
+    }
   }
 
   @override
@@ -432,15 +272,13 @@ class _WeatherScreenState extends State<WeatherScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          weatherData?['temperature']?.toString() != null
-                              ? '${weatherData?['temperature'].toStringAsFixed(0)}°C'
-                              : 'N/A',
-                          style: const TextStyle(
-                              fontSize: 60, fontWeight: FontWeight.bold),
+                        TemperatureDisplay(
+                          temperature: weatherData?['temperature'] ?? 'N/A',
                         ),
                         Text(
-                          '$selectedProvince\nประเทศไทย',
+                          selectedProvince != null
+                              ? '$selectedProvince\nประเทศไทย'
+                              : 'ไม่พบจังหวัด',
                           style: const TextStyle(fontSize: 18),
                           textAlign: TextAlign.center,
                         ),
@@ -462,8 +300,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => SettingsScreen(),
-                        ),
+                            builder: (context) => SettingsScreen()),
                       );
                     },
                   ),
@@ -471,6 +308,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
               ],
             ),
             const SizedBox(height: 20),
+            // แสดงผลข้อมูลรายชั่วโมง
             Container(
               width: 300,
               padding: const EdgeInsets.all(16),
@@ -498,17 +336,17 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       childAspectRatio: 1 / 1.5,
                     ),
                     itemBuilder: (context, index) {
-                      String hour = hourlyData[index]['hour']!;
+                      String hour = hourlyData[index]['time']!;
                       String temperature = hourlyData[index]['temperature']!;
 
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(hour, style: const TextStyle(fontSize: 15)),
+                          Text(hour, style: const TextStyle(fontSize: 16)),
                           const SizedBox(height: 2),
-                          Text(temperature,
+                          Text('$temperature°',
                               style: const TextStyle(
-                                  fontSize: 25, fontWeight: FontWeight.bold)),
+                                  fontSize: 24, fontWeight: FontWeight.bold)),
                         ],
                       );
                     },
@@ -517,9 +355,11 @@ class _WeatherScreenState extends State<WeatherScreen> {
               ),
             ),
             const SizedBox(height: 20),
+            // แสดงผลความชื้นและความเร็วลม
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Container สำหรับความชื้น
                 Container(
                   width: 140,
                   padding: const EdgeInsets.all(16),
@@ -537,17 +377,14 @@ class _WeatherScreenState extends State<WeatherScreen> {
                   child: Column(
                     children: [
                       const Text('ความชื้น', style: TextStyle(fontSize: 16)),
-                      Text(
-                        weatherData?['humidity'] != null
-                            ? '${weatherData?['humidity']}%'
-                            : 'N/A',
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
+                      HumidityDisplay(
+                        humidity: weatherData?['humidity'] ?? 'N/A',
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 20),
+                // Container สำหรับความเร็วลม
                 Container(
                   width: 140,
                   padding: const EdgeInsets.all(16),
@@ -565,12 +402,8 @@ class _WeatherScreenState extends State<WeatherScreen> {
                   child: Column(
                     children: [
                       const Text('ความเร็วลม', style: TextStyle(fontSize: 16)),
-                      Text(
-                        weatherData?['windSpeed'] != null
-                            ? '${weatherData?['windSpeed']} m/s'
-                            : 'N/A',
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
+                      WindSpeedDisplay(
+                        windSpeed: weatherData?['windSpeed'] ?? 'N/A',
                       ),
                     ],
                   ),
@@ -604,7 +437,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                 ),
                 child: Text(
                   dailyWeather ?? 'Loading daily data...',
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(fontSize: 18),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -619,61 +452,15 @@ class _WeatherScreenState extends State<WeatherScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        String searchQuery = '';
-        List<String> filteredProvinces = provinces;
-
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('เลือกจังหวัด'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      decoration: const InputDecoration(
-                        hintText: 'ค้นหาจังหวัด',
-                        prefixIcon: Icon(Icons.search, color: Colors.black),
-                      ),
-                      onChanged: (value) {
-                        setState(() {
-                          searchQuery = value;
-                          filteredProvinces = provinces
-                              .where(
-                                  (province) => province.contains(searchQuery))
-                              .toList();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 300,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: filteredProvinces.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            title: Text(filteredProvinces[index]),
-                            onTap: () {
-                              setState(() {
-                                selectedProvince = filteredProvinces[index];
-                                weatherData = null;
-                                dailyWeather = null;
-                              });
-                              fetchWeatherDataByProvince(selectedProvince!);
-                              fetchHourlyWeatherData(selectedProvince!);
-                              fetchDailyWeatherData(selectedProvince!);
-                              Navigator.of(context).pop();
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
+        return ProvincePicker(
+          provinces: provinces,
+          onProvinceSelected: (String selected) {
+            setState(() {
+              selectedProvince = selected;
+              weatherData = null;
+              dailyWeather = null;
+            });
+            _fetchWeatherData();
           },
         );
       },

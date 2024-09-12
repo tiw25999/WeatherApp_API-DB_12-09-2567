@@ -1,18 +1,50 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class NewPasswordScreen extends StatelessWidget {
+class NewPasswordScreen extends StatefulWidget {
+  const NewPasswordScreen({super.key});
+
+  @override
+  _NewPasswordScreenState createState() => _NewPasswordScreenState();
+}
+
+class _NewPasswordScreenState extends State<NewPasswordScreen> {
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _repeatPasswordController =
       TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  NewPasswordScreen({super.key});
+  void _resetPassword() async {
+    if (_newPasswordController.text == _repeatPasswordController.text) {
+      try {
+        User? user = _auth.currentUser;
+        if (user != null) {
+          await user.updatePassword(_newPasswordController.text);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Password has been updated successfully')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User is not logged in')),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reset Password'),
-      ),
+      appBar: AppBar(title: const Text('Reset Password')),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -20,10 +52,7 @@ class NewPasswordScreen extends StatelessWidget {
           children: [
             const Text(
               'Reset your password',
-              style: TextStyle(
-                fontSize: 18.0,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20.0),
             TextField(
@@ -55,11 +84,7 @@ class NewPasswordScreen extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // ฟังก์ชันที่ต้องการทำเมื่อกดปุ่ม Reset password
-                  print(
-                      'Passwords: ${_newPasswordController.text}, ${_repeatPasswordController.text}');
-                },
+                onPressed: _resetPassword, // เรียกใช้ฟังก์ชันรีเซ็ตรหัสผ่าน
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
@@ -67,10 +92,8 @@ class NewPasswordScreen extends StatelessWidget {
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 15.0),
                 ),
-                child: const Text(
-                  'Reset password',
-                  style: TextStyle(color: Colors.white),
-                ),
+                child: const Text('Reset password',
+                    style: TextStyle(color: Colors.white)),
               ),
             ),
           ],

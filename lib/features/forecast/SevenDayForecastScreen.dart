@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart'; // สำหรับจัดการวันที่ในท้องถิ่น
 import 'package:intl/intl.dart';
 
+import '/widgets/province_picker.dart'; // Import ProvincePicker
+
 class SevenDayForecastScreen extends StatefulWidget {
   final String province;
 
@@ -77,147 +79,6 @@ class _SevenDayForecastScreenState extends State<SevenDayForecastScreen> {
     }
   }
 
-  void _showProvincePicker(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        String searchQuery = '';
-        List<String> provinces = [
-          'กรุงเทพมหานคร',
-          'กระบี่',
-          'กาญจนบุรี',
-          'กาฬสินธุ์',
-          'กำแพงเพชร',
-          'ขอนแก่น',
-          'จันทบุรี',
-          'ฉะเชิงเทรา',
-          'ชลบุรี',
-          'ชัยนาท',
-          'ชัยภูมิ',
-          'ชุมพร',
-          'เชียงใหม่',
-          'เชียงราย',
-          'ตรัง',
-          'ตราด',
-          'ตาก',
-          'นครนายก',
-          'นครปฐม',
-          'นครพนม',
-          'นครราชสีมา',
-          'นครศรีธรรมราช',
-          'นครสวรรค์',
-          'นนทบุรี',
-          'นราธิวาส',
-          'น่าน',
-          'บึงกาฬ',
-          'บุรีรัมย์',
-          'ปทุมธานี',
-          'ประจวบคีรีขันธ์',
-          'ปราจีนบุรี',
-          'ปัตตานี',
-          'พระนครศรีอยุธยา',
-          'พังงา',
-          'พัทลุง',
-          'พิจิตร',
-          'พิษณุโลก',
-          'เพชรบุรี',
-          'เพชรบูรณ์',
-          'แพร่',
-          'พะเยา',
-          'ภูเก็ต',
-          'มหาสารคาม',
-          'มุกดาหาร',
-          'แม่ฮ่องสอน',
-          'ยะลา',
-          'ยโสธร',
-          'ร้อยเอ็ด',
-          'ระนอง',
-          'ระยอง',
-          'ราชบุรี',
-          'ลพบุรี',
-          'ลำปาง',
-          'ลำพูน',
-          'เลย',
-          'ศรีสะเกษ',
-          'สกลนคร',
-          'สงขลา',
-          'สตูล',
-          'สมุทรปราการ',
-          'สมุทรสงคราม',
-          'สมุทรสาคร',
-          'สระแก้ว',
-          'สระบุรี',
-          'สิงห์บุรี',
-          'สุโขทัย',
-          'สุพรรณบุรี',
-          'สุราษฎร์ธานี',
-          'สุรินทร์',
-          'หนองคาย',
-          'หนองบัวลำภู',
-          'อ่างทอง',
-          'อุดรธานี',
-          'อุทัยธานี',
-          'อุตรดิตถ์',
-          'อุบลราชธานี',
-          'อำนาจเจริญ'
-        ];
-        List<String> filteredProvinces = provinces;
-
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('เลือกจังหวัด'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      decoration: const InputDecoration(
-                        hintText: 'ค้นหาจังหวัด',
-                        prefixIcon: Icon(Icons.search, color: Colors.black),
-                      ),
-                      onChanged: (value) {
-                        setState(() {
-                          searchQuery = value;
-                          filteredProvinces = provinces
-                              .where(
-                                  (province) => province.contains(searchQuery))
-                              .toList();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 300,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: filteredProvinces.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            title: Text(filteredProvinces[index]),
-                            onTap: () {
-                              setState(() {
-                                selectedProvince = filteredProvinces[index];
-                                forecastData = [];
-                              });
-                              fetchSevenDayForecast(selectedProvince!);
-                              Navigator.of(context).pop();
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -267,6 +128,102 @@ class _SevenDayForecastScreenState extends State<SevenDayForecastScreen> {
                 }).toList(),
               ),
       ),
+    );
+  }
+
+  void _showProvincePicker(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return ProvincePicker(
+          provinces: [
+            'กรุงเทพมหานคร',
+            'กระบี่',
+            'กาญจนบุรี',
+            'กาฬสินธุ์',
+            'กำแพงเพชร',
+            'ขอนแก่น',
+            'จันทบุรี',
+            'ฉะเชิงเทรา',
+            'ชลบุรี',
+            'ชัยนาท',
+            'ชัยภูมิ',
+            'ชุมพร',
+            'เชียงใหม่',
+            'เชียงราย',
+            'ตรัง',
+            'ตราด',
+            'ตาก',
+            'นครนายก',
+            'นครปฐม',
+            'นครพนม',
+            'นครราชสีมา',
+            'นครศรีธรรมราช',
+            'นครสวรรค์',
+            'นนทบุรี',
+            'นราธิวาส',
+            'น่าน',
+            'บึงกาฬ',
+            'บุรีรัมย์',
+            'ปทุมธานี',
+            'ประจวบคีรีขันธ์',
+            'ปราจีนบุรี',
+            'ปัตตานี',
+            'พระนครศรีอยุธยา',
+            'พังงา',
+            'พัทลุง',
+            'พิจิตร',
+            'พิษณุโลก',
+            'เพชรบุรี',
+            'เพชรบูรณ์',
+            'แพร่',
+            'พะเยา',
+            'ภูเก็ต',
+            'มหาสารคาม',
+            'มุกดาหาร',
+            'แม่ฮ่องสอน',
+            'ยะลา',
+            'ยโสธร',
+            'ร้อยเอ็ด',
+            'ระนอง',
+            'ระยอง',
+            'ราชบุรี',
+            'ลพบุรี',
+            'ลำปาง',
+            'ลำพูน',
+            'เลย',
+            'ศรีสะเกษ',
+            'สกลนคร',
+            'สงขลา',
+            'สตูล',
+            'สมุทรปราการ',
+            'สมุทรสงคราม',
+            'สมุทรสาคร',
+            'สระแก้ว',
+            'สระบุรี',
+            'สิงห์บุรี',
+            'สุโขทัย',
+            'สุพรรณบุรี',
+            'สุราษฎร์ธานี',
+            'สุรินทร์',
+            'หนองคาย',
+            'หนองบัวลำภู',
+            'อ่างทอง',
+            'อุดรธานี',
+            'อุทัยธานี',
+            'อุตรดิตถ์',
+            'อุบลราชธานี',
+            'อำนาจเจริญ'
+          ],
+          onProvinceSelected: (String selected) {
+            setState(() {
+              selectedProvince = selected;
+              forecastData = [];
+            });
+            fetchSevenDayForecast(selectedProvince!);
+          },
+        );
+      },
     );
   }
 }
